@@ -18,22 +18,22 @@ import numpy as np
 from tensorflow.compat.v1 import ConfigProto
 from tensorflow.compat.v1 import InteractiveSession
 
-from local_utils import detect_lp
+from core.local_utils import detect_lp
 from os.path import splitext,basename
 from keras.models import model_from_json
 from keras.preprocessing.image import load_img, img_to_array
-# from keras.applications.mobilenet_v2 import preprocess_input
 from sklearn.preprocessing import LabelEncoder
 import glob
 import pytesseract
 import re
+import datetime
 
 flags.DEFINE_string('framework', 'tf', '(tf)')
 flags.DEFINE_string('weights', './checkpoints/yolov4-416',
                     'path to weights file')
 flags.DEFINE_integer('size', 416, 'resize images to')
 flags.DEFINE_boolean('tiny', False, 'yolo or yolo-tiny')
-flags.DEFINE_string('model', 'yolov4', 'yolov3 or yolov4')
+# flags.DEFINE_string('model', 'yolov4', 'yolov3 or yolov4')
 flags.DEFINE_string('video', './data/video/video.mp4', 'path to input video or set to 0 for webcam')
 flags.DEFINE_string('output', None, 'path to output video')
 flags.DEFINE_string('output_format', 'XVID', 'codec used in VideoWriter when saving video to file')
@@ -63,7 +63,7 @@ def preprocess_image(img, resize=False):
   return img
 
 def get_plate(image_path, Dmax=608, Dmin = 608):
-  wpod_net_path = "wpod-net.json"
+  wpod_net_path = "data/model/wpod-net.json"
   wpod_net = load_model(wpod_net_path)
   vehicle = preprocess_image(image_path)
   ratio = float(max(vehicle.shape[:2])) / min(vehicle.shape[:2])
@@ -84,68 +84,9 @@ def ocr(img):
   blur = cv2.resize(blur, None, fx = 2, fy = 2, interpolation = cv2.INTER_CUBIC)
   try:
     text = pytesseract.image_to_string(blur, config='-c tessedit_char_whitelist=0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ --psm 8 --oem 3')
-    # text= re.sub(r"[^a-zA-Z0-9]","", text)
   except: 
     text = None
   return text
-
-def recognize_plate(img):
-    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-    # resize image to three times as large as original for better readability
-    gray = cv2.resize(gray, None, fx = 3, fy = 3, interpolation = cv2.INTER_CUBIC)
-    # perform gaussian blur to smoothen image
-    blur = cv2.GaussianBlur(gray, (5,5), 0)
-    # threshold the image using Otsus method to preprocess for tesseract
-    ret, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_OTSU | cv2.THRESH_BINARY_INV)
-    # create rectangular kernel for dilation
-    rect_kern = cv2.getStructuringElement(cv2.MORPH_RECT, (5,5))
-    # apply dilation to make regions more clear
-    dilation = cv2.dilate(thresh, rect_kern, iterations = 1)
-    # find contours of regions of interest within license plate
-    try:
-        contours, hierarchy = cv2.findContours(dilation, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-    except:
-        ret_img, contours, hierarchy = cv2.findContours(dilation, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-    # sort contours left-to-right
-    sorted_contours = sorted(contours, key=lambda ctr: cv2.boundingRect(ctr)[0])
-    # create copy of gray image
-    im2 = gray.copy()
-    # create blank string to hold license plate number
-    plate_num = ""
-    # loop through contours and find individual letters and numbers in license plate
-    for cnt in sorted_contours:
-        x,y,w,h = cv2.boundingRect(cnt)
-        height, width = im2.shape
-        # if height of box is not tall enough relative to total height then skip
-        if height / float(h) > 6: continue
-
-        ratio = h / float(w)
-        # if height to width ratio is less than 1.5 skip
-        if ratio < 1.5: continue
-
-        # if width is not wide enough relative to total width then skip
-        if width / float(w) > 15: continue
-
-        area = h * w
-        # if area is less than 100 pixels skip
-        if area < 100: continue
-
-        # grab character region of image
-        roi = thresh[y-5:y+h+5, x-5:x+w+5]
-        # perfrom bitwise not to flip image to black text on white background
-        roi = cv2.bitwise_not(roi)
-        # perform another blur on character region
-        roi = cv2.medianBlur(roi, 5)
-        try:
-            text = pytesseract.image_to_string(roi, config='-c tessedit_char_whitelist=0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ --psm 8 --oem 3')
-            # clean tesseract text by removing any unwanted blank spaces
-            clean_text = re.sub('[\W_]+', '', text)
-            plate_num += clean_text
-        except: 
-            text = None
-    if plate_num != None:
-        print("License Plate #: ", plate_num)
-    return plate_num
 
 def calculate(image, bboxes):
   classes = read_class_names(cfg.YOLO.CLASSES)
@@ -157,7 +98,7 @@ def calculate(image, bboxes):
       xmin, ymin, xmax, ymax = out_boxes[i]
       # print("xmin: ",xmin)
       score = out_scores[i]
-      print("score: ", score)
+      # print("score: ", score)
 
       cropped_img = image[int(ymin)-40:int(ymax)+40, int(xmin)-50:int(xmax)+50]
       cv2.imwrite("cropped_{}.jpg".format(i, str), cropped_img)
@@ -165,7 +106,6 @@ def calculate(image, bboxes):
       if len(cor) > 0:
         cv2.imwrite("result{}.jpg".format(i, str), plate[0])
         plate_number = ocr(plate)
-        # print("plate_number: ", plate_number)
 
         if plate_number == None:
           # confidence_score = None
@@ -173,37 +113,39 @@ def calculate(image, bboxes):
 
           # print("confidence_score: ", score)
           # continue
-        return plate_number, score
+        return cropped_img, plate_number, score
       else:
         plate_number = None
-        return plate_number, score
+        return cropped_img, plate_number, score
   else:
+    cropped_img = None
     plate_number = None
     confidence_score = None
-    return plate_number, confidence_score 
+    return cropped_img, plate_number, confidence_score 
 
-def main(_argv):
+def main(video_input):
     config = ConfigProto()
     config.gpu_options.allow_growth = True
     session = InteractiveSession(config=config)
     STRIDES, ANCHORS, NUM_CLASS, XYSCALE = utils.load_config(FLAGS)
-    input_size = FLAGS.size
-    video_path = FLAGS.video
+    input_size = 416 #FLAGS.size
+    video_path = video_input #FLAGS.video_input
+
     # get video name by using split method
     video_name = video_path.split('/')[-1]
     video_name = video_name.split('.')[0]
 
-    saved_model_loaded = tf.saved_model.load(FLAGS.weights, tags=[tag_constants.SERVING])
+    saved_model_loaded = tf.saved_model.load('checkpoints/custom-416', tags=[tag_constants.SERVING])
     infer = saved_model_loaded.signatures['serving_default']
 
-    # begin video capture
     try:
         vid = cv2.VideoCapture(int(video_path))
     except:
         vid = cv2.VideoCapture(video_path)
 
     frame_num = 0
-    
+    plate_number = None
+    confidence_score = None
     while True:
         return_value, frame = vid.read()
         if return_value:
@@ -233,8 +175,8 @@ def main(_argv):
                 pred_conf, (tf.shape(pred_conf)[0], -1, tf.shape(pred_conf)[-1])),
             max_output_size_per_class=50,
             max_total_size=50,
-            iou_threshold=FLAGS.iou,
-            score_threshold=FLAGS.score
+            iou_threshold=0.5, #FLAGS.iou,
+            score_threshold=0.7 #FLAGS.score
         )
 
         # format bounding boxes from normalized ymin, xmin, ymax, xmax ---> xmin, ymin, xmax, ymax
@@ -250,19 +192,27 @@ def main(_argv):
         # crop_objects(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), pred_bbox)
 
         fps = 1.0 / (time.time() - start_time)
-        print("FPS: %.2f" % fps)
+        # print("FPS: %.2f" % fps)
+        print("frame: ", frame_num)
         
-        plate_number, confidence_score = calculate(frame, pred_bbox)
-        if plate_number == None:
+        cropped_img, plate_number, confidence_score = calculate(frame, pred_bbox)
+        clean_text = re.sub('[\W_]+', '', str(plate_number))
+        print("clean_text: ",len(clean_text))
+        num_len = len(clean_text)
+        
+        if (plate_number == None or num_len < 5 or num_len > 6 ):
           continue
+          print("nooooooooooooooooooooooooooooooooooooooooo")
         else:
-          clean_text = re.sub('[\W_]+', '', plate_number)
-          print("_______plate number: "+str(clean_text))
-          print("________confidence_score: "+str(confidence_score) )
+          print("plate number: "+str(clean_text))
+          print("confidence_score: "+str(confidence_score) )
+          print("Time: ", datetime.datetime.now())
+        # return cropped_img, plate_number, confidence_score, datetime.datetime.now() #??????????????
+
     print("done!!!")
 
 if __name__ == '__main__':
   try:
-      app.run(main)
+      app.run(main("./data/video/test3.mp4"))
   except SystemExit:
       pass

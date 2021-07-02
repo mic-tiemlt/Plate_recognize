@@ -1,4 +1,4 @@
-opencv-python==4.1.1.26
+opencv-python
 lxml
 tqdm
 tensorflow==2.3.0rc0
@@ -7,3 +7,7 @@ easydict
 matplotlib
 pillow
 pytesseract
+keras
+sklearn
+flask
+flask-cors

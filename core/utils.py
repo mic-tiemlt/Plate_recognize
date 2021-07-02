@@ -160,17 +160,9 @@ def read_class_names(class_file_name):
     return names
 
 def load_config(FLAGS):
-    if FLAGS.tiny:
-        STRIDES = np.array(cfg.YOLO.STRIDES_TINY)
-        ANCHORS = get_anchors(cfg.YOLO.ANCHORS_TINY, FLAGS.tiny)
-        XYSCALE = cfg.YOLO.XYSCALE_TINY if FLAGS.model == 'yolov4' else [1, 1]
-    else:
-        STRIDES = np.array(cfg.YOLO.STRIDES)
-        if FLAGS.model == 'yolov4':
-            ANCHORS = get_anchors(cfg.YOLO.ANCHORS, FLAGS.tiny)
-        elif FLAGS.model == 'yolov3':
-            ANCHORS = get_anchors(cfg.YOLO.ANCHORS_V3, FLAGS.tiny)
-        XYSCALE = cfg.YOLO.XYSCALE if FLAGS.model == 'yolov4' else [1, 1, 1]
+    STRIDES = np.array(cfg.YOLO.STRIDES)
+    ANCHORS = get_anchors(cfg.YOLO.ANCHORS, False)
+    XYSCALE = cfg.YOLO.XYSCALE
     NUM_CLASS = len(read_class_names(cfg.YOLO.CLASSES))
 
     return STRIDES, ANCHORS, NUM_CLASS, XYSCALE
@@ -212,41 +204,6 @@ def format_boxes(bboxes, image_height, image_width):
         xmax = int(box[3] * image_width)
         box[0], box[1], box[2], box[3] = xmin, ymin, xmax, ymax
     return bboxes
-
-def calculate(image, bboxes, allowed_classes=list(read_class_names(cfg.YOLO.CLASSES).values()) ):
-    classes = read_class_names(cfg.YOLO.CLASSES)
-    num_classes = len(classes)
-    image_h, image_w, _ = image.shape
-    hsv_tuples = [(1.0 * x / num_classes, 1., 1.) for x in range(num_classes)]
-    colors = list(map(lambda x: colorsys.hsv_to_rgb(*x), hsv_tuples))
-    colors = list(map(lambda x: (int(x[0] * 255), int(x[1] * 255), int(x[2] * 255)), colors))
-
-    random.seed(0)
-    random.shuffle(colors)
-    random.seed(None)
-
-    out_boxes, out_scores, out_classes, num_boxes = bboxes
-    for i in range(num_boxes):
-        if int(out_classes[i]) < 0 or int(out_classes[i]) > num_classes: continue
-        coor = out_boxes[i]
-        fontScale = 0.5
-        score = out_scores[i]
-        class_ind = int(out_classes[i])
-        class_name = classes[class_ind]
-        if class_name not in allowed_classes:
-            continue
-        else:
-            
-          plate_number = recognize_plate(image, coor)
-          if plate_number == None:
-            continue
-          else:
-            cropped_img = image[int(coor[1])-20:int(coor[3])+20, int(coor[0])-20:int(coor[2])+20]
-            confidence_score = score
-            cv2.imwrite("result_croped/plate_{}.png".format(i, str), cropped_img)
-            return [cropped_img, plate_number, confidence_score]
-
-
 
 def bbox_iou(bboxes1, bboxes2):
     """

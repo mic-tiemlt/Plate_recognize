@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+  <link rel= "stylesheet" type= "text/css" href= "/static/styles/plate.css">
+  
+  <body>
+
+    <script language="JavaScript" type="text/javascript">
+      function run() {
+        fetch("http://127.0.0.1:5000/plate", {
+        method: 'GET',
+        mode: 'no-cors',
+        headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+        },
+      });
+    }
+    </script>
+    <h1>Plate recognize</h1>
+
+    <div>
+      <video width="700" controls>
+        <source src="/static/test.mp4" type="video/mp4">
+      </video>
+
+    </div>
+
+    <br>
+
+    <div>
+      <button class="button" onclick="run()">RUN</button>
+    </div>
+  </body>
+</html>
