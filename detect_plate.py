@@ -84,6 +84,7 @@ def ocr(img):
   blur = cv2.resize(blur, None, fx = 2, fy = 2, interpolation = cv2.INTER_CUBIC)
   try:
     text = pytesseract.image_to_string(blur, config='-c tessedit_char_whitelist=0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ --psm 8 --oem 3')
+    text = re.sub('[\W_]+', '', str(text))
   except: 
     text = None
   return text
@@ -96,120 +97,97 @@ def calculate(image, bboxes):
   if num_boxes > 0:
     for i in range(num_boxes):
       xmin, ymin, xmax, ymax = out_boxes[i]
-      # print("xmin: ",xmin)
+
       score = out_scores[i]
-      # print("score: ", score)
 
       cropped_img = image[int(ymin)-40:int(ymax)+40, int(xmin)-50:int(xmax)+50]
-      cv2.imwrite("cropped_{}.jpg".format(i, str), cropped_img)
+      
       vehicle, plate, cor = get_plate(cropped_img)
       if len(cor) > 0:
-        cv2.imwrite("result{}.jpg".format(i, str), plate[0])
+        # cv2.imwrite("result{}.jpg".format(i, str), plate[0])
+        cv2.imwrite("static/images/cropped_{}.jpg".format(i, str), cropped_img)
         plate_number = ocr(plate)
-
-        if plate_number == None:
-          # confidence_score = None
-          plate_number = None
-
-          # print("confidence_score: ", score)
-          # continue
-        return cropped_img, plate_number, score
-      else:
-        plate_number = None
-        return cropped_img, plate_number, score
-  else:
-    cropped_img = None
-    plate_number = None
-    confidence_score = None
-    return cropped_img, plate_number, confidence_score 
+        num_len = len(plate_number)
+        if (plate_number != None or num_len == 5 or num_len == 6 ):
+          with open("static/texts/plate_number_{}.txt".format(i, str), "w") as text_file:
+            print(f"{str(plate_number)}", file=text_file)
+          with open("static/texts/time_{}.txt".format(i, str), "w") as text_file:
+            print(f"{str(plate_number)}", file=text_file)
 
 def main(video_input):
-    config = ConfigProto()
-    config.gpu_options.allow_growth = True
-    session = InteractiveSession(config=config)
-    STRIDES, ANCHORS, NUM_CLASS, XYSCALE = utils.load_config(FLAGS)
-    input_size = 416 #FLAGS.size
-    video_path = video_input #FLAGS.video_input
+  config = ConfigProto()
+  config.gpu_options.allow_growth = True
+  session = InteractiveSession(config=config)
+  STRIDES, ANCHORS, NUM_CLASS, XYSCALE = utils.load_config(FLAGS)
+  input_size = 416 #FLAGS.size
+  video_path = video_input #FLAGS.video_input
 
-    # get video name by using split method
-    video_name = video_path.split('/')[-1]
-    video_name = video_name.split('.')[0]
+  # get video name by using split method
+  video_name = video_path.split('/')[-1]
+  video_name = video_name.split('.')[0]
 
-    saved_model_loaded = tf.saved_model.load('checkpoints/custom-416', tags=[tag_constants.SERVING])
-    infer = saved_model_loaded.signatures['serving_default']
+  saved_model_loaded = tf.saved_model.load('checkpoints/custom-416', tags=[tag_constants.SERVING])
+  infer = saved_model_loaded.signatures['serving_default']
 
-    try:
-        vid = cv2.VideoCapture(int(video_path))
-    except:
-        vid = cv2.VideoCapture(video_path)
+  try:
+      vid = cv2.VideoCapture(int(video_path))
+  except:
+      vid = cv2.VideoCapture(video_path)
 
-    frame_num = 0
-    plate_number = None
-    confidence_score = None
-    while True:
-        return_value, frame = vid.read()
-        if return_value:
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            frame_num += 1
-            image = Image.fromarray(frame)
-        else:
-            print('Video has ended or failed, try a different video format!')
-            break
+  frame_num = 0
+  plate_number = None
+  confidence_score = None
+  while True:
+    return_value, frame = vid.read()
+    if return_value:
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        frame_num += 1
+        image = Image.fromarray(frame)
+    else:
+        print('Video has ended or failed, try a different video format!')
+        break
+
+    frame_size = frame.shape[:2]
+    image_data = cv2.resize(frame, (input_size, input_size))
+    image_data = image_data / 255.
+    image_data = image_data[np.newaxis, ...].astype(np.float32)
+    start_time = time.time()
+
     
-        frame_size = frame.shape[:2]
-        image_data = cv2.resize(frame, (input_size, input_size))
-        image_data = image_data / 255.
-        image_data = image_data[np.newaxis, ...].astype(np.float32)
-        start_time = time.time()
+    batch_data = tf.constant(image_data)
+    pred_bbox = infer(batch_data)
+    for key, value in pred_bbox.items():
+      boxes = value[:, :, 0:4]
+      pred_conf = value[:, :, 4:]
 
-        
-        batch_data = tf.constant(image_data)
-        pred_bbox = infer(batch_data)
-        for key, value in pred_bbox.items():
-          boxes = value[:, :, 0:4]
-          pred_conf = value[:, :, 4:]
+    boxes, scores, classes, valid_detections = tf.image.combined_non_max_suppression(
+        boxes=tf.reshape(boxes, (tf.shape(boxes)[0], -1, 1, 4)),
+        scores=tf.reshape(
+            pred_conf, (tf.shape(pred_conf)[0], -1, tf.shape(pred_conf)[-1])),
+        max_output_size_per_class=50,
+        max_total_size=50,
+        iou_threshold=0.5, #FLAGS.iou,
+        score_threshold=0.7 #FLAGS.score
+    )
 
-        boxes, scores, classes, valid_detections = tf.image.combined_non_max_suppression(
-            boxes=tf.reshape(boxes, (tf.shape(boxes)[0], -1, 1, 4)),
-            scores=tf.reshape(
-                pred_conf, (tf.shape(pred_conf)[0], -1, tf.shape(pred_conf)[-1])),
-            max_output_size_per_class=50,
-            max_total_size=50,
-            iou_threshold=0.5, #FLAGS.iou,
-            score_threshold=0.7 #FLAGS.score
-        )
+    # format bounding boxes from normalized ymin, xmin, ymax, xmax ---> xmin, ymin, xmax, ymax
+    original_h, original_w, _ = frame.shape
+    bboxes = utils.format_boxes(boxes.numpy()[0], original_h, original_w)
 
-        # format bounding boxes from normalized ymin, xmin, ymax, xmax ---> xmin, ymin, xmax, ymax
-        original_h, original_w, _ = frame.shape
-        bboxes = utils.format_boxes(boxes.numpy()[0], original_h, original_w)
+    pred_bbox = [bboxes, scores.numpy()[0], classes.numpy()[0], valid_detections.numpy()[0]]
+    
+    class_names = utils.read_class_names(cfg.YOLO.CLASSES)
 
-        pred_bbox = [bboxes, scores.numpy()[0], classes.numpy()[0], valid_detections.numpy()[0]]
-        
-        class_names = utils.read_class_names(cfg.YOLO.CLASSES)
+    # allowed_classes = list(class_names.values())
+    
+    # crop_objects(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), pred_bbox)
 
-        # allowed_classes = list(class_names.values())
-        
-        # crop_objects(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), pred_bbox)
-
-        fps = 1.0 / (time.time() - start_time)
-        # print("FPS: %.2f" % fps)
-        print("frame: ", frame_num)
-        
-        cropped_img, plate_number, confidence_score = calculate(frame, pred_bbox)
-        clean_text = re.sub('[\W_]+', '', str(plate_number))
-        print("clean_text: ",len(clean_text))
-        num_len = len(clean_text)
-        
-        if (plate_number == None or num_len < 5 or num_len > 6 ):
-          continue
-          print("nooooooooooooooooooooooooooooooooooooooooo")
-        else:
-          print("plate number: "+str(clean_text))
-          print("confidence_score: "+str(confidence_score) )
-          print("Time: ", datetime.datetime.now())
-        # return cropped_img, plate_number, confidence_score, datetime.datetime.now() #??????????????
-
-    print("done!!!")
+    # fps = 1.0 / (time.time() - start_time)
+    # print("FPS: %.2f" % fps)
+    print("frame: ", frame_num)
+    
+    calculate(frame, pred_bbox)
+  print("done!!!")
 
 if __name__ == '__main__':
   try:

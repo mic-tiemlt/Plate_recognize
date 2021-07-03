@@ -7,3 +7,7 @@ matplotlib
 easydict
 pillow
 pytesseract
+keras
+sklearn
+flask
+flask-cors
