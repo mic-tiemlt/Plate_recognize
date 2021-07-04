@@ -20,30 +20,14 @@ from tensorflow.compat.v1 import InteractiveSession
 
 from core.local_utils import detect_lp
 from os.path import splitext,basename
-from keras.models import model_from_json
-from keras.preprocessing.image import load_img, img_to_array
+from tensorflow.keras.models import model_from_json
+from tensorflow.keras.preprocessing.image import load_img, img_to_array
 from sklearn.preprocessing import LabelEncoder
 import glob
 import pytesseract
 import re
 import datetime
 
-flags.DEFINE_string('framework', 'tf', '(tf)')
-flags.DEFINE_string('weights', './checkpoints/yolov4-416',
-                    'path to weights file')
-flags.DEFINE_integer('size', 416, 'resize images to')
-flags.DEFINE_boolean('tiny', False, 'yolo or yolo-tiny')
-# flags.DEFINE_string('model', 'yolov4', 'yolov3 or yolov4')
-flags.DEFINE_string('video', './data/video/video.mp4', 'path to input video or set to 0 for webcam')
-flags.DEFINE_string('output', None, 'path to output video')
-flags.DEFINE_string('output_format', 'XVID', 'codec used in VideoWriter when saving video to file')
-flags.DEFINE_float('iou', 0.5, 'iou threshold')
-flags.DEFINE_float('score', 0.7, 'score threshold')
-flags.DEFINE_boolean('count', True, 'count objects within video')
-flags.DEFINE_boolean('dont_show', False, 'dont show video output')
-flags.DEFINE_boolean('info', False, 'print info on detections')
-flags.DEFINE_boolean('crop', False, 'crop detections from images')
-flags.DEFINE_boolean('plate', False, 'perform license plate recognition')
 
 def load_model(path):
   try:
@@ -74,14 +58,13 @@ def get_plate(image_path, Dmax=608, Dmin = 608):
 
 def ocr(img):
   plate_image = cv2.convertScaleAbs(img[0], alpha=(255.0))
-  
-  # convert to grayscale and blur the image
   gray = cv2.cvtColor(plate_image, cv2.COLOR_BGR2GRAY)
   blur = cv2.GaussianBlur(gray,(7,7),0)
 
   thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
   blur = cv2.medianBlur(thresh, 3)
   blur = cv2.resize(blur, None, fx = 2, fy = 2, interpolation = cv2.INTER_CUBIC)
+  # cv2.imwrite("blur.jpg", blur)
   try:
     text = pytesseract.image_to_string(blur, config='-c tessedit_char_whitelist=0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ --psm 8 --oem 3')
     text = re.sub('[\W_]+', '', str(text))
@@ -99,30 +82,31 @@ def calculate(image, bboxes):
       xmin, ymin, xmax, ymax = out_boxes[i]
 
       score = out_scores[i]
-
-      cropped_img = image[int(ymin)-40:int(ymax)+40, int(xmin)-50:int(xmax)+50]
-      
+      cropped_img = image[int(ymin)-50:int(ymax)+50, int(xmin)-60:int(xmax)+60]
       vehicle, plate, cor = get_plate(cropped_img)
       if len(cor) > 0:
-        # cv2.imwrite("result{}.jpg".format(i, str), plate[0])
-        cv2.imwrite("static/images/cropped_{}.jpg".format(i, str), cropped_img)
         plate_number = ocr(plate)
         num_len = len(plate_number)
-        if (plate_number != None or num_len == 5 or num_len == 6 ):
+        print("text lengh: ", num_len)
+        print("text: ", plate_number)
+        plate_number = re.sub('[\W_]+', '', str(plate_number))
+        
+        if ( num_len == 5 or num_len == 6 ):
+          cv2.imwrite("static/images/cropped_{}.jpg".format(i, str), cropped_img)
           with open("static/texts/plate_number_{}.txt".format(i, str), "w") as text_file:
             print(f"{str(plate_number)}", file=text_file)
-          with open("static/texts/time_{}.txt".format(i, str), "w") as text_file:
-            print(f"{str(plate_number)}", file=text_file)
+          # d1 = datetime.now()
+          # with open("static/texts/time_{}.txt".format(i, str), "w") as text_file:
+          #   print(f"{str(d1)}", file=text_file)
 
 def main(video_input):
   config = ConfigProto()
   config.gpu_options.allow_growth = True
   session = InteractiveSession(config=config)
   STRIDES, ANCHORS, NUM_CLASS, XYSCALE = utils.load_config(FLAGS)
-  input_size = 416 #FLAGS.size
-  video_path = video_input #FLAGS.video_input
+  input_size = 416 
+  video_path = video_input 
 
-  # get video name by using split method
   video_name = video_path.split('/')[-1]
   video_name = video_name.split('.')[0]
 
@@ -166,31 +150,24 @@ def main(video_input):
             pred_conf, (tf.shape(pred_conf)[0], -1, tf.shape(pred_conf)[-1])),
         max_output_size_per_class=50,
         max_total_size=50,
-        iou_threshold=0.5, #FLAGS.iou,
-        score_threshold=0.7 #FLAGS.score
+        iou_threshold=0.5,
+        score_threshold=0.7
     )
 
-    # format bounding boxes from normalized ymin, xmin, ymax, xmax ---> xmin, ymin, xmax, ymax
     original_h, original_w, _ = frame.shape
     bboxes = utils.format_boxes(boxes.numpy()[0], original_h, original_w)
 
     pred_bbox = [bboxes, scores.numpy()[0], classes.numpy()[0], valid_detections.numpy()[0]]
     
     class_names = utils.read_class_names(cfg.YOLO.CLASSES)
-
-    # allowed_classes = list(class_names.values())
-    
-    # crop_objects(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), pred_bbox)
-
-    # fps = 1.0 / (time.time() - start_time)
-    # print("FPS: %.2f" % fps)
     print("frame: ", frame_num)
     
     calculate(frame, pred_bbox)
   print("done!!!")
+  return "ok"
 
-if __name__ == '__main__':
-  try:
-      app.run(main("./data/video/test3.mp4"))
-  except SystemExit:
-      pass
+# if __name__ == '__main__':
+#   try:
+#       app.run(main("./data/video/test1.mp4"))
+#   except SystemExit:
+#       pass

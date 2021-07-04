@@ -28,15 +28,8 @@ def plate_recognize():
 @app.route("/plate", methods=['GET'])
 def run():
   print("startttttt")
-  plate, plate_number, time = 1, 2, 3#main("/static/test.mp4")
-  print("plate_number: ", plate_number)
-  json = {"plate": plate, "plate_number": plate_number, "time": time}
-  response = app.response_class(
-        response=json.dumps(json),
-        status=200,
-        mimetype='application/json'
-    )
-  return response
+  main("/static/test.mp4")
+  return "ok"
 
 
 if __name__ == "__main__":
