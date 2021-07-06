@@ -1,6 +1,6 @@
 function refresh(node)
 {
-   var times = 300; // gap in Milli Seconds;
+   var times = 500;
 
    (function startRefresh()
    {
@@ -20,19 +20,36 @@ window.onload = function()
 {
   var node = document.getElementById('img');
   refresh(node);
+  getPlate();
 }
 
-
 function getPlate() {
-    $.ajax({
-        url: 'static/texts/plate_number_0.txt',
-        dataType: 'text',
-        success: function(text) {
-            $("#plate_number").text(text);
-            document.getElementById('plate_number').innerText = text
-            setTimeout(getPlate, 300);
+    var
+        $http,
+        $self = arguments.callee;
+
+    if (window.XMLHttpRequest) {
+        $http = new XMLHttpRequest();
+    } else if (window.ActiveXObject) {
+        try {
+            $http = new ActiveXObject('Msxml2.XMLHTTP');
+        } catch(e) {
+            $http = new ActiveXObject('Microsoft.XMLHTTP');
         }
-    })
+    }
+
+    if ($http) {
+        $http.onreadystatechange = function()
+        {
+            if (/4|^complete$/.test($http.readyState)) {
+                document.getElementById('plate_number').innerHTML = $http.responseText;
+                setTimeout(function(){$self();}, 500);
+            }
+        };
+        $http.open('GET', './static/texts/plate_number_0.txt' + '?' + new Date().getTime(), true);
+        $http.send(null);
+    }
+
 }
 
 // function run() {

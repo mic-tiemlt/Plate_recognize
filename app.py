@@ -1,7 +1,8 @@
-from flask import Flask, redirect, url_for, render_template, request
+from flask import Flask, redirect, url_for, render_template, request, Response
 from detect_plate import main
 import os
 from flask_cors import CORS
+import subprocess
 UPLOAD_PATH = "./static"
 
 
@@ -25,12 +26,14 @@ def upload_file():
 def plate_recognize():
   return render_template('plate.html')
 
-@app.route("/plate", methods=['GET'])
+@app.route("/plate", methods=['POST'])
 def run():
-  print("startttttt")
-  main("/static/test.mp4")
-  return "ok"
-
+  subprocess.call("python detect_plate.py", shell=True)
+  return ('', 204)
 
 if __name__ == "__main__":
-	app.run(debug=False)
+	app.run(host='0.0.0.0', debug=False, threaded=True)
+
+
+  
+

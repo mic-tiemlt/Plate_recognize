@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
   <link rel= "stylesheet" type= "text/css" href= "/static/styles/plate.css">
-  <body onload()>
+  <body >
     <script src="static/styles/plate.js"></script>
     <h1>Plate recognize</h1>
     <div>
@@ -14,14 +14,21 @@
     <br>
 
     <div>
-      <form action="/plate" method="get"">
+      <form action="/plate" method="POST">
         <button class="button">RUN</button>
       </form>
     </div>
     <br>
-    <div>
+    <div >
       <img src="static/images/cropped_0.jpg" id="img" >
+
       <p id='plate_number'></p>
     </div>
+
+    <!-- <br>
+
+    <div >
+      <p id='plate_number'></p>
+    </div> -->
   </body>
 </html>

@@ -27,6 +27,7 @@ import glob
 import pytesseract
 import re
 import datetime
+from flask import Flask
 
 
 def load_model(path):
@@ -69,7 +70,7 @@ def ocr(img):
     text = pytesseract.image_to_string(blur, config='-c tessedit_char_whitelist=0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ --psm 8 --oem 3')
     text = re.sub('[\W_]+', '', str(text))
   except: 
-    text = None
+    text = "None"
   return text
 
 def calculate(image, bboxes):
@@ -83,6 +84,7 @@ def calculate(image, bboxes):
 
       score = out_scores[i]
       cropped_img = image[int(ymin)-50:int(ymax)+50, int(xmin)-60:int(xmax)+60]
+      cv2.imwrite("static/images/cropped_{}.jpg".format(i, str), cropped_img)
       vehicle, plate, cor = get_plate(cropped_img)
       if len(cor) > 0:
         plate_number = ocr(plate)
@@ -103,13 +105,13 @@ def main(video_input):
   config = ConfigProto()
   config.gpu_options.allow_growth = True
   session = InteractiveSession(config=config)
+  # session = InteractiveSession(config=ConfigProto())
   STRIDES, ANCHORS, NUM_CLASS, XYSCALE = utils.load_config(FLAGS)
   input_size = 416 
   video_path = video_input 
 
   video_name = video_path.split('/')[-1]
   video_name = video_name.split('.')[0]
-
   saved_model_loaded = tf.saved_model.load('checkpoints/custom-416', tags=[tag_constants.SERVING])
   infer = saved_model_loaded.signatures['serving_default']
 
@@ -164,10 +166,9 @@ def main(video_input):
     
     calculate(frame, pred_bbox)
   print("done!!!")
-  return "ok"
 
-# if __name__ == '__main__':
-#   try:
-#       app.run(main("./data/video/test1.mp4"))
-#   except SystemExit:
-#       pass
+if __name__ == '__main__':
+  try:
+      app.run(main("./static/test.mp4"))
+  except SystemExit:
+      pass
